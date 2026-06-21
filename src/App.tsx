@@ -26,7 +26,8 @@ import DiffViewer from "./components/DiffViewer";
 import LandingPage from "./components/LandingPage";
 import AuthPage from "./components/AuthPage";
 import Logo from "./components/Logo";
-import { LogOut } from "lucide-react";
+import AdminDashboard from "./components/AdminDashboard";
+import { LogOut, X } from "lucide-react";
 
 // Contoh teks otomatis yang disediakan untuk kenyamanan eksplorasi pengguna
 const SAMPLE_TEXTS = [
@@ -52,7 +53,7 @@ const SAMPLE_TEXTS = [
 
 export default function App() {
   // Navigation & Sessions
-  const [view, setView] = useState<"landing" | "auth" | "app">("landing");
+  const [view, setView] = useState<"landing" | "auth" | "app" | "admin">("landing");
   const [authInitialMode, setAuthInitialMode] = useState<"login" | "register">("login");
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
 
@@ -90,6 +91,36 @@ export default function App() {
 
   // UI Navigation Tabs
   const [activeTab, setActiveTab] = useState<"editor" | "diff" | "history">("editor");
+
+  // Admin Login Challenge Overlay States
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminUsernameInput, setAdminUsernameInput] = useState("");
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
+  const [adminDialogError, setAdminDialogError] = useState<string | null>(null);
+
+  // Submisi Otorisasi Admin Instan
+  const handleAdminDialogSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (
+      (adminUsernameInput.toLowerCase() === "akunadmin" || adminUsernameInput.toLowerCase() === "akunadmin@admin.com") &&
+      adminPasswordInput === "admin123"
+    ) {
+      const adminSessionUser: UserType = {
+        id: "usr_admin",
+        name: "Budi Administrator",
+        email: "admin@parafaseku.com",
+        role: "admin"
+      };
+      setCurrentUser(adminSessionUser);
+      try {
+        localStorage.setItem("paraphrase_session_user", JSON.stringify(adminSessionUser));
+      } catch (err) {}
+      setShowAdminModal(false);
+      setView("admin");
+    } else {
+      setAdminDialogError("Kombinasi kredensial salah! Gunakan 'akunadmin' & sandi 'admin123'.");
+    }
+  };
 
   // Riwayat semesta (semua user)
   const [history, setHistory] = useState<ParaphraseHistoryItem[]>([]);
@@ -348,6 +379,15 @@ export default function App() {
     );
   }
 
+  if (view === "admin") {
+    return (
+      <AdminDashboard
+        onBackToApp={() => setView("app")}
+        currentUser={currentUser}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f4f8fa] text-slate-800 font-sans selection:bg-blue-500 selection:text-white pb-16 relative overflow-hidden">
       
@@ -417,7 +457,24 @@ export default function App() {
               </div>
             )}
 
-            {/* Status Indikator API */}
+            {/* Status Indikator API & Dashboard Admin */}
+            <button
+              onClick={() => {
+                if (currentUser?.role === "admin") {
+                  setView("admin");
+                } else {
+                  setAdminUsernameInput("");
+                  setAdminPasswordInput("");
+                  setAdminDialogError(null);
+                  setShowAdminModal(true);
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#142D54] hover:bg-[#1f3e6e] text-white rounded-lg cursor-pointer transition text-xs font-bold shadow-sm shadow-blue-500/5 border border-[#1a3861]"
+              title="Akses Monitoring & Dashboard Admin"
+            >
+              👑 Monitor Admin
+            </button>
+
             <div className="hidden lg:flex items-center gap-2 bg-blue-50/50 border border-blue-100/80 rounded-lg px-3 py-1.5 text-xs text-blue-700 font-semibold shadow-sm">
               <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping" />
               <span>Sistem AI Aktif</span>
@@ -1151,6 +1208,76 @@ export default function App() {
         </div>
         <p className="mt-1 text-slate-400">Didesain dengan Cinta &amp; Estetika Minimalis Modern.</p>
       </footer>
+
+      {/* Admin Credentials prompt Modal Overlay */}
+      {showAdminModal && (
+        <div className="fixed inset-0 z-50 bg-[#142D54]/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 shadow-2xl rounded-3xl w-full max-w-md overflow-hidden relative p-6 space-y-4 animate-fade-in text-left">
+            <button
+              onClick={() => setShowAdminModal(false)}
+              className="absolute top-4 right-4 p-1.5 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition cursor-pointer"
+            >
+              <X className="h-4.5 w-4.5" />
+            </button>
+
+            <div className="text-center space-y-1">
+              <div className="h-10 w-10 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto text-lg">
+                👑
+              </div>
+              <h3 className="text-base font-extrabold text-slate-900">Akses Terbatas Administrator</h3>
+              <p className="text-xs text-slate-400">Verifikasi kredensial monitoring khusus admin untuk melanjutkan.</p>
+            </div>
+
+            {adminDialogError && (
+              <div className="bg-rose-50 border border-rose-100 text-rose-700 text-xs p-2.5 rounded-xl text-center font-semibold">
+                ⚠️ {adminDialogError}
+              </div>
+            )}
+
+            <form onSubmit={handleAdminDialogSubmit} className="space-y-4 pt-2">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Username / Email Admin
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={adminUsernameInput}
+                  onChange={(e) => setAdminUsernameInput(e.target.value)}
+                  placeholder="Masukkan 'akunadmin'"
+                  className="block w-full px-3 py-2 border border-slate-200 rounded-lg text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition bg-white text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Kata Sandi
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={adminPasswordInput}
+                  onChange={(e) => setAdminPasswordInput(e.target.value)}
+                  placeholder="Masukkan sandi khusus admin"
+                  className="block w-full px-3 py-2 border border-slate-200 rounded-lg text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-[#142D54] transition bg-white text-slate-800"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-[#142D54] hover:bg-[#1e3d6e] text-white py-2 rounded-lg font-bold text-xs cursor-pointer transition shadow-md shadow-blue-950/10"
+              >
+                Verifikasi &amp; Masuk Dashboard
+              </button>
+            </form>
+
+            <div className="bg-blue-50/50 p-3 rounded-2xl border border-blue-100/60 text-center text-[10px] text-blue-700">
+              <p className="font-semibold">💡 Kredensial Pengujian Admin:</p>
+              <p className="mt-0.5">Username: <strong className="font-sans font-bold">akunadmin</strong> | Sandi: <strong className="font-sans font-bold">admin123</strong></p>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

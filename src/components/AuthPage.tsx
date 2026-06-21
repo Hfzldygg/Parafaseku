@@ -77,18 +77,35 @@ export default function AuthPage({ initialMode = "login", onSuccess, onBackToLan
         onSuccess({ id: newUser.id, name: newUser.name, email: newUser.email });
       } else {
         // Mode Login
-        const foundUser = users.find(
-          (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+        let foundUser = users.find(
+          (u) => (u.email.toLowerCase() === email.toLowerCase() || u.name === email) && u.password === password
         );
 
+        // Dukungan khusus 'akunadmin' & 'admin123'
+        if ((email.toLowerCase() === "akunadmin" || email.toLowerCase() === "akunadmin@admin.com" || email.toLowerCase() === "admin@parafaseku.com") && password === "admin123") {
+          foundUser = {
+            id: "usr_admin",
+            name: "Budi Administrator",
+            email: "admin@parafaseku.com",
+            role: "admin"
+          };
+          
+          // Seed ke list lokal jika belum tercatat
+          const exists = users.some(u => u.id === "usr_admin");
+          if (!exists) {
+            const updatedUsers = [...users, { ...foundUser, password: "admin123" }];
+            localStorage.setItem("paraphrase_users_db_v1", JSON.stringify(updatedUsers));
+          }
+        }
+
         if (!foundUser) {
-          setError("Kombinasi email atau kata sandi tidak valid. Silakan periksa kembali.");
+          setError("Kombinasi email/username atau kata sandi tidak valid. Silakan periksa kembali.");
           setIsLoading(false);
           return;
         }
 
         setIsLoading(false);
-        onSuccess({ id: foundUser.id, name: foundUser.name, email: foundUser.email });
+        onSuccess({ id: foundUser.id, name: foundUser.name, email: foundUser.email, role: foundUser.role });
       }
     }, 800);
   };
@@ -163,21 +180,24 @@ export default function AuthPage({ initialMode = "login", onSuccess, onBackToLan
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Alamat Email
+                Alamat Email atau Username Admin
               </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                   <Mail className="h-4.5 w-4.5 text-slate-400" />
                 </div>
                 <input
-                  type="email"
+                  type="text"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@email.com"
+                  placeholder="name@email.com atau username admin"
                   className="block w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
                 />
               </div>
+              <p className="mt-1 text-[10px] text-slate-400">
+                💡 Untuk login Admin default: gunakan <strong>akunadmin</strong> dan password <strong>admin123</strong>
+              </p>
             </div>
 
             <div>
