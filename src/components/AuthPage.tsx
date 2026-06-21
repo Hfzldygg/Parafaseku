@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Sparkles, Mail, Lock, User, ArrowRight, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { User as UserType } from "../types";
 import Logo from "./Logo";
+import { getUsers, addUser } from "../lib/db";
 
 interface AuthPageProps {
   initialMode?: "login" | "register";
@@ -18,17 +19,7 @@ export default function AuthPage({ initialMode = "login", onSuccess, onBackToLan
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fungsi untuk mendapatkan semua user yang terdaftar di localStorage
-  const getRegisteredUsers = (): UserType[] => {
-    try {
-      const usersRaw = localStorage.getItem("paraphrase_users_db_v1");
-      return usersRaw ? JSON.parse(usersRaw) : [];
-    } catch (e) {
-      return [];
-    }
-  };
-
-  const handleAuth = (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -49,12 +40,10 @@ export default function AuthPage({ initialMode = "login", onSuccess, onBackToLan
 
     setIsLoading(true);
 
-    // Simulasi loading sebentar agar kelihatan natural & pro
-    setTimeout(() => {
-      const users = getRegisteredUsers();
+    try {
+      const users = await getUsers();
 
       if (mode === "register") {
-        // Cek apakah email sudah terdaftar
         const emailExists = users.some((u) => u.email.toLowerCase() === email.toLowerCase());
         if (emailExists) {
           setError("Email ini sudah terdaftar. Silakan pilih Masuk.");
@@ -62,52 +51,38 @@ export default function AuthPage({ initialMode = "login", onSuccess, onBackToLan
           return;
         }
 
-        // Daftarkan user baru
-        const newUser: UserType = {
-          id: `usr_${Date.now()}`,
+        const newUserBase = {
           name: name.trim(),
           email: email.toLowerCase().trim(),
-          password: password, // Di simpan aman di client/browser demo
+          password: password,
+          role: "user" as const,
+          createdAt: new Date().toISOString(),
         };
 
-        const updatedUsers = [...users, newUser];
-        localStorage.setItem("paraphrase_users_db_v1", JSON.stringify(updatedUsers));
+        const docRef = await addUser(newUserBase);
         
         setIsLoading(false);
-        onSuccess({ id: newUser.id, name: newUser.name, email: newUser.email });
+        onSuccess({ id: docRef.id, ...newUserBase });
       } else {
         // Mode Login
         let foundUser = users.find(
           (u) => (u.email.toLowerCase() === email.toLowerCase() || u.name === email) && u.password === password
         );
 
-        // Dukungan khusus 'akunadmin' & 'admin123'
-        if ((email.toLowerCase() === "akunadmin" || email.toLowerCase() === "akunadmin@admin.com" || email.toLowerCase() === "admin@parafaseku.com") && password === "admin123") {
-          foundUser = {
-            id: "usr_admin",
-            name: "Budi Administrator",
-            email: "admin@parafaseku.com",
-            role: "admin"
-          };
-          
-          // Seed ke list lokal jika belum tercatat
-          const exists = users.some(u => u.id === "usr_admin");
-          if (!exists) {
-            const updatedUsers = [...users, { ...foundUser, password: "admin123" }];
-            localStorage.setItem("paraphrase_users_db_v1", JSON.stringify(updatedUsers));
-          }
-        }
-
         if (!foundUser) {
-          setError("Kombinasi email/username atau kata sandi tidak valid. Silakan periksa kembali.");
+          setError("Kombinasi email/username atau kata sandi tidak valid.");
           setIsLoading(false);
           return;
         }
 
         setIsLoading(false);
-        onSuccess({ id: foundUser.id, name: foundUser.name, email: foundUser.email, role: foundUser.role });
+        onSuccess(foundUser);
       }
-    }, 800);
+    } catch (e) {
+      setError("Terjadi kesalahan sistem. Silakan coba lagi.");
+      setIsLoading(false);
+      console.error(e);
+    }
   };
 
   return (

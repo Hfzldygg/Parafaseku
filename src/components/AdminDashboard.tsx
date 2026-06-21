@@ -19,6 +19,7 @@ import {
   TrendingUp,
   Award
 } from "lucide-react";
+import { User as UserType, ParaphraseHistoryItem } from "../types";
 import { getUsers, getHistory, updateUserRole, deleteUser, addHistoryItem } from "../lib/db";
 import Logo from "./Logo";
 
