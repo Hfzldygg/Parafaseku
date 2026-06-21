@@ -19,7 +19,7 @@ import {
   TrendingUp,
   Award
 } from "lucide-react";
-import { User as UserType, ParaphraseHistoryItem } from "../types";
+import { getUsers, getHistory, updateUserRole, deleteUser, addHistoryItem } from "../lib/db";
 import Logo from "./Logo";
 
 interface AdminDashboardProps {
@@ -41,88 +41,15 @@ export default function AdminDashboard({ onBackToApp, currentUser }: AdminDashbo
   const [selectedTask, setSelectedTask] = useState<ParaphraseHistoryItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Load Real Data from localStorage on Mount
-  const loadData = () => {
-    try {
-      const usersRaw = localStorage.getItem("paraphrase_users_db_v1");
-      const historyRaw = localStorage.getItem("paraphrase_history_v1");
-      
-      const loadedUsers: UserType[] = usersRaw ? JSON.parse(usersRaw) : [];
-      const loadedHistory: ParaphraseHistoryItem[] = historyRaw ? JSON.parse(historyRaw) : [];
-      
-      // Seed some default users if empty, so the monitoring isn't blank
-      if (loadedUsers.length === 0) {
-        const defaultUsers: UserType[] = [
-          { id: "usr_1", name: "Ahmad Dahlan", email: "ahmaddahlan@gmail.com", role: "user", createdAt: "2026-06-18T10:14:00Z" },
-          { id: "usr_2", name: "Siti Rahma", email: "siti.rahma@student.ui.ac.id", role: "user", createdAt: "2026-06-19T08:35:00Z" },
-          { id: "usr_3", name: "Kevin Wijaya", email: "kevin.wijaya@outlook.com", role: "user", createdAt: "2026-06-20T14:42:00Z" },
-          { id: "usr_admin", name: "Budi Administrator", email: "admin@parafaseku.com", role: "admin", createdAt: "2026-06-15T09:00:00Z" }
-        ];
-        localStorage.setItem("paraphrase_users_db_v1", JSON.stringify(defaultUsers));
-        setUsers(defaultUsers);
-      } else {
-        setUsers(loadedUsers);
-      }
-
-      // Seed some history if empty so logs are visible and beautiful
-      if (loadedHistory.length === 0) {
-        const defaultHistory: ParaphraseHistoryItem[] = [
-          {
-            id: "tx_1",
-            userId: "usr_1",
-            originalText: "Kecerdasan buatan merupakan teknologi yang sangat krusial di era transformasi digital ini.",
-            paraphrasedText: "Teknologi kecerdasan buatan memegang peranan yang sangat penting dalam masa peralihan digital saat ini.",
-            mode: "humanize",
-            language: "id",
-            timestamp: "2026-06-20T11:24:00Z",
-            scores: {
-              aiProbability: 8,
-              originalAiProbability: 84,
-              readabilityScore: 92,
-              humanizedScore: 96,
-              feedback: ["Mengalihkan verba pasif", "Memperkaya variasi nomina", "Bypass transisi klise AI"],
-              turnitinScore: 98,
-              gptzeroScore: 95,
-              copyleaksScore: 97,
-              zerogptScore: 96
-            },
-            similarity: 18
-          },
-          {
-            id: "tx_2",
-            userId: "usr_2",
-            originalText: "We need to formulate a proper strategy to overcome the challenges in our educational system.",
-            paraphrasedText: "It is essential to design an effective roadmap to address the ongoing difficulties within our schools.",
-            mode: "academic",
-            language: "en",
-            timestamp: "2026-06-21T02:15:00Z",
-            scores: {
-              aiProbability: 12,
-              originalAiProbability: 75,
-              readabilityScore: 88,
-              humanizedScore: 91,
-              feedback: ["Elevated vocabulary choice", "Structured complex sentences"],
-              turnitinScore: 94,
-              gptzeroScore: 91,
-              copyleaksScore: 92,
-              zerogptScore: 93
-            },
-            similarity: 22
-          }
-        ];
-        localStorage.setItem("paraphrase_history_v1", JSON.stringify(defaultHistory));
-        setHistory(defaultHistory);
-      } else {
-        setHistory(loadedHistory);
-      }
-
-    } catch (e) {
-      console.error("Gagal mendandani data admin dashboard:", e);
-    }
-  };
-
+  // Load Real Data from Firestore on Mount
   useEffect(() => {
-    loadData();
+    const fetchData = async () => {
+      const usersList = await getUsers();
+      setUsers(usersList);
+      const historyList = await getHistory();
+      setHistory(historyList);
+    };
+    fetchData();
   }, []);
 
   // Simulating live telemetry charts fluctuation
@@ -144,21 +71,17 @@ export default function AdminDashboard({ onBackToApp, currentUser }: AdminDashbo
   };
 
   // User Actions: Toggle Role (User <-> Admin)
-  const handleToggleRole = (userId: string) => {
-    const updatedUsers = users.map(u => {
-      if (u.id === userId) {
-        const newRole = u.role === "admin" ? "user" : "admin";
-        triggerToast(`Peran ${u.name} berhasil diubah menjadi ${newRole.toUpperCase()}`);
-        return { ...u, role: newRole as "user" | "admin" };
-      }
-      return u;
-    });
-    setUsers(updatedUsers);
-    localStorage.setItem("paraphrase_users_db_v1", JSON.stringify(updatedUsers));
+  const handleToggleRole = async (userId: string) => {
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
+    const newRole = user.role === "admin" ? "user" : "admin";
+    await updateUserRole(userId, newRole);
+    setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+    triggerToast(`Peran ${user.name} berhasil diubah menjadi ${newRole.toUpperCase()}`);
   };
 
   // User Actions: Hapus Akun
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = async (userId: string) => {
     if (userId === currentUser?.id) {
       triggerToast("Anda tidak bisa menghapus akun Anda sendiri yang sedang aktif!");
       return;
@@ -167,18 +90,16 @@ export default function AdminDashboard({ onBackToApp, currentUser }: AdminDashbo
     if (!target) return;
     
     if (confirm(`Apakah Anda yakin ingin menghapus akun ${target.name} secara permanen? All riwayat akan terasosiasi anonim.`)) {
-      const filtered = users.filter(u => u.id !== userId);
-      setUsers(filtered);
-      localStorage.setItem("paraphrase_users_db_v1", JSON.stringify(filtered));
+      await deleteUser(userId);
+      setUsers(users.filter(u => u.id !== userId));
       triggerToast(`Akun ${target.name} telah dihapus dari sistem.`);
     }
   };
 
   // Generate Sample Traffic
-  const handleGenerateSampleTraffic = () => {
+  const handleGenerateSampleTraffic = async () => {
     const samples = [
       {
-        id: `tx_gen_${Date.now()}`,
         userId: users[Math.floor(Math.random() * users.length)]?.id || "usr_1",
         originalText: "Pendidikan adalah hal yang mendasar bagi semua orang di negara kita.",
         paraphrasedText: "Akses proses pembelajaran merupakan fondasi utama bagi seluruh elemen masyarakat.",
@@ -197,34 +118,22 @@ export default function AdminDashboard({ onBackToApp, currentUser }: AdminDashbo
           zerogptScore: 98
         },
         similarity: 12
-      },
-      {
-        id: `tx_gen_${Date.now() + 1}`,
-        userId: users[Math.floor(Math.random() * users.length)]?.id || "usr_2",
-        originalText: "Artificial intelligence models are progressing with rapid speeds everywhere.",
-        paraphrasedText: "Machine learning engines are evolving at an unprecedented pace across the globe.",
-        mode: "professional" as const,
-        language: "en" as const,
-        timestamp: new Date().toISOString(),
-        scores: {
-          aiProbability: 15,
-          originalAiProbability: 92,
-          readabilityScore: 85,
-          humanizedScore: 93,
-          feedback: ["Replacing frequent transition phrases", "Applying advanced terminology"],
-          turnitinScore: 92,
-          gptzeroScore: 90,
-          copyleaksScore: 91,
-          zerogptScore: 92
-        },
-        similarity: 26
       }
     ];
 
-    const updatedHistory = [...samples, ...history];
-    setHistory(updatedHistory);
-    localStorage.setItem("paraphrase_history_v1", JSON.stringify(updatedHistory));
-    triggerToast("Berhasil mendatangkan 2 tugas simulasi bypass baru!");
+    for (const sample of samples) {
+      await addHistoryItem(sample);
+    }
+    await refreshData();
+    triggerToast("Berhasil mendatangkan tugas simulasi baru!");
+  };
+
+  const refreshData = async () => {
+    const usersList = await getUsers();
+    setUsers(usersList);
+    const historyList = await getHistory();
+    setHistory(historyList);
+    triggerToast("Data disinkronkan dengan Firestore!");
   };
 
   // Math Calculations for Dashboard
@@ -308,7 +217,7 @@ export default function AdminDashboard({ onBackToApp, currentUser }: AdminDashbo
                 <Play className="h-3 w-3 fill-white" /> Gelontorkan Trafik Simulasi AI
               </button>
               <button 
-                onClick={loadData}
+                onClick={refreshData}
                 className="bg-white/10 hover:bg-white/20 text-white border border-white/10 text-xs font-bold px-4 py-2 rounded-lg cursor-pointer transition flex items-center gap-1.5"
               >
                 <RefreshCw className="h-3 w-3" /> Sinkron Data
@@ -316,6 +225,8 @@ export default function AdminDashboard({ onBackToApp, currentUser }: AdminDashbo
             </div>
           </div>
         </div>
+
+        {/* ... (rest of code) ... */}
 
         {/* 4 Cards Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">

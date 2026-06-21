@@ -180,7 +180,7 @@ export default function AuthPage({ initialMode = "login", onSuccess, onBackToLan
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Alamat Email atau Username Admin
+                Alamat Email
               </label>
               <div className="relative rounded-xl shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -191,13 +191,10 @@ export default function AuthPage({ initialMode = "login", onSuccess, onBackToLan
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@email.com atau username admin"
+                  placeholder="name@email.com"
                   className="block w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
                 />
               </div>
-              <p className="mt-1 text-[10px] text-slate-400">
-                💡 Untuk login Admin default: gunakan <strong>akunadmin</strong> dan password <strong>admin123</strong>
-              </p>
             </div>
 
             <div>
