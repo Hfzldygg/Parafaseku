@@ -458,22 +458,15 @@ export default function App() {
             )}
 
             {/* Status Indikator API & Dashboard Admin */}
-            <button
-              onClick={() => {
-                if (currentUser?.role === "admin") {
-                  setView("admin");
-                } else {
-                  setAdminUsernameInput("");
-                  setAdminPasswordInput("");
-                  setAdminDialogError(null);
-                  setShowAdminModal(true);
-                }
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#142D54] hover:bg-[#1f3e6e] text-white rounded-lg cursor-pointer transition text-xs font-bold shadow-sm shadow-blue-500/5 border border-[#1a3861]"
-              title="Akses Monitoring & Dashboard Admin"
-            >
-              👑 Monitor Admin
-            </button>
+            {currentUser?.role === "admin" && (
+              <button
+                onClick={() => setView("admin")}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#142D54] hover:bg-[#1f3e6e] text-white rounded-lg cursor-pointer transition text-xs font-bold shadow-sm shadow-blue-500/5 border border-[#1a3861]"
+                title="Akses Monitoring & Dashboard Admin"
+              >
+                👑 Monitor Admin
+              </button>
+            )}
 
             <div className="hidden lg:flex items-center gap-2 bg-blue-50/50 border border-blue-100/80 rounded-lg px-3 py-1.5 text-xs text-blue-700 font-semibold shadow-sm">
               <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping" />
