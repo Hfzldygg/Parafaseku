@@ -1,0 +1,6 @@
+{
+  "name": "Parafaseku",
+  "description": "Website parafrase cerdas Parafaseku dengan deteksi AI real-time, pengubah teks gaya bahasa manusiawi (humanizer) bypass detektor, dan visualisasi kata.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
