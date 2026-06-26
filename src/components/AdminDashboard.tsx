@@ -190,9 +190,18 @@ export default function AdminDashboard({ onBackToApp, currentUser }: AdminDashbo
               <p className="text-xs font-bold text-[#142D54]">{currentUser?.name || "Administrator"}</p>
               <p className="text-[10px] text-emerald-600 font-semibold">Status: Superuser</p>
             </div>
-            <div className="h-8 w-8 rounded-full bg-[#142D54] text-white font-extrabold text-xs flex items-center justify-center border border-blue-900 shadow shadow-blue-500/10 uppercase">
-              👑
-            </div>
+            {currentUser?.photoURL ? (
+              <img
+                src={currentUser.photoURL}
+                alt={currentUser.name}
+                referrerPolicy="no-referrer"
+                className="h-8 w-8 rounded-full object-cover border border-blue-900 shadow shadow-blue-500/10"
+              />
+            ) : (
+              <div className="h-8 w-8 rounded-full bg-[#142D54] text-white font-extrabold text-xs flex items-center justify-center border border-blue-900 shadow shadow-blue-500/10 uppercase">
+                👑
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -519,9 +528,18 @@ export default function AdminDashboard({ onBackToApp, currentUser }: AdminDashbo
                       filteredUsers.map((user) => (
                         <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-6 py-4 font-bold text-slate-900 flex items-center gap-2">
-                            <div className="h-7 w-7 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-700 font-bold text-[10px] select-none">
-                              {user.name ? user.name.charAt(0).toUpperCase() : "?"}
-                            </div>
+                            {user.photoURL ? (
+                              <img
+                                src={user.photoURL}
+                                alt={user.name}
+                                referrerPolicy="no-referrer"
+                                className="h-7 w-7 rounded-full object-cover border border-blue-100 shadow-sm"
+                              />
+                            ) : (
+                              <div className="h-7 w-7 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-700 font-bold text-[10px] select-none uppercase">
+                                {user.name ? user.name.charAt(0).toUpperCase() : "?"}
+                              </div>
+                            )}
                             <span>{user.name}</span>
                           </td>
                           <td className="px-6 py-4 font-mono text-slate-500">{user.email}</td>

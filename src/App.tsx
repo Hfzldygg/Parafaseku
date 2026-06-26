@@ -28,6 +28,7 @@ import AuthPage from "./components/AuthPage";
 import Logo from "./components/Logo";
 import AdminDashboard from "./components/AdminDashboard";
 import { LogOut, X } from "lucide-react";
+import { getHistory, addHistoryItem, updateUserProfile } from "./lib/db";
 
 // Contoh teks otomatis yang disediakan untuk kenyamanan eksplorasi pengguna
 const SAMPLE_TEXTS = [
@@ -98,6 +99,64 @@ export default function App() {
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
   const [adminDialogError, setAdminDialogError] = useState<string | null>(null);
 
+  // Profile Settings States
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profilePhotoURL, setProfilePhotoURL] = useState("");
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
+
+  const openProfileModal = () => {
+    if (currentUser) {
+      setProfileName(currentUser.name || "");
+      setProfilePhotoURL(currentUser.photoURL || "");
+      setProfileError(null);
+      setProfileSuccess(null);
+      setShowProfileModal(true);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    if (!profileName.trim()) {
+      setProfileError("Nama tidak boleh kosong.");
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setProfileError(null);
+    setProfileSuccess(null);
+
+    try {
+      if (currentUser.id !== "usr_admin") {
+        await updateUserProfile(currentUser.id, {
+          name: profileName.trim(),
+          photoURL: profilePhotoURL.trim() || ""
+        });
+      }
+
+      const updatedUser: UserType = {
+        ...currentUser,
+        name: profileName.trim(),
+        photoURL: profilePhotoURL.trim() || ""
+      };
+
+      setCurrentUser(updatedUser);
+      localStorage.setItem("paraphrase_session_user", JSON.stringify(updatedUser));
+      setProfileSuccess("Profil Anda berhasil disimpan!");
+      setTimeout(() => {
+        setShowProfileModal(false);
+      }, 1500);
+    } catch (err: any) {
+      console.error(err);
+      setProfileError("Gagal menyimpan perubahan ke Firestore. Silakan coba lagi.");
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   // Submisi Otorisasi Admin Instan
   const handleAdminDialogSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,36 +198,62 @@ export default function App() {
     }
   }, []);
 
-  // Mengambil histori dari LocalStorage saat startup
+  // Mengambil histori dari Firestore & LocalStorage saat startup
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("paraphrase_history_v1");
-      if (saved) {
-        setHistory(JSON.parse(saved));
+    const fetchHistoryFromDb = async () => {
+      try {
+        const dbHistory = await getHistory();
+        if (dbHistory && dbHistory.length > 0) {
+          setHistory(dbHistory);
+        } else {
+          // Fallback to localStorage
+          const saved = localStorage.getItem("paraphrase_history_v1");
+          if (saved) {
+            setHistory(JSON.parse(saved));
+          }
+        }
+      } catch (e) {
+        console.error("Gagal membaca history dari Firestore:", e);
+        // Fallback to localStorage
+        try {
+          const saved = localStorage.getItem("paraphrase_history_v1");
+          if (saved) {
+            setHistory(JSON.parse(saved));
+          }
+        } catch (err) {}
       }
-    } catch (e) {
-      console.error("Gagal membaca history dari localStorage:", e);
-    }
-  }, []);
+    };
+    fetchHistoryFromDb();
+  }, [currentUser]);
 
   // Menyaring histori spesifik milik user saat ini
   const userHistory = history.filter((item) => item.userId === currentUser?.id);
 
-  // Menyimpan histori ke LocalStorage setiap ada pembaruan
-  const saveToHistory = (newItem: ParaphraseHistoryItem) => {
+  // Menyimpan histori ke Firestore dan LocalStorage setiap ada pembaruan
+  const saveToHistory = async (newItem: ParaphraseHistoryItem) => {
     // Sisipkan user id aktif ke item riwayat
-    const itemWithUser = { ...newItem, userId: currentUser?.id };
+    const itemWithUser = { ...newItem, userId: currentUser?.id || "usr_anonymous" };
+    
+    // Update local state first to keep it fully snappy and responsive
     const updated = [itemWithUser, ...history].slice(0, 50); // simpan maks 50 total
     setHistory(updated);
+    
     try {
       localStorage.setItem("paraphrase_history_v1", JSON.stringify(updated));
     } catch (e) {
       console.error("Gagal menyimpan history ke localStorage:", e);
     }
+
+    try {
+      // Save synchronously/asynchronously to Firestore db
+      await addHistoryItem(itemWithUser);
+    } catch (e) {
+      console.error("Gagal menyimpan history ke Firestore:", e);
+    }
   };
 
   const clearHistory = () => {
-    // Hanya hapus riwayat milik user aktif
+    // Hanya hapus riwayat milik user aktif secara lokal
     const updated = history.filter((item) => item.userId !== currentUser?.id);
     setHistory(updated);
     try {
@@ -440,16 +525,36 @@ export default function App() {
             {/* Informasi Akun & Tombol Logout */}
             {currentUser && (
               <div className="flex items-center gap-2 border-l border-slate-200 pl-3.5">
-                <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center border border-blue-200 shadow-sm uppercase">
-                  {currentUser.name ? currentUser.name.charAt(0) : "U"}
-                </div>
-                <div className="hidden sm:block text-left">
-                  <p className="text-xs font-bold text-slate-800 line-clamp-1 max-w-[120px]">{currentUser.name}</p>
-                  <p className="text-[10px] text-slate-400 line-clamp-1">Akun Terverifikasi</p>
-                </div>
+                <button
+                  onClick={openProfileModal}
+                  className="flex items-center gap-2 text-left hover:bg-slate-50 p-1.5 rounded-xl transition-all border border-transparent hover:border-slate-100 group cursor-pointer"
+                  title="Atur Profil (Ubah Nama & Foto)"
+                >
+                  {currentUser.photoURL ? (
+                    <img
+                      src={currentUser.photoURL}
+                      alt={currentUser.name}
+                      referrerPolicy="no-referrer"
+                      className="h-8 w-8 rounded-full object-cover border border-blue-200 shadow-sm"
+                    />
+                  ) : (
+                    <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center border border-blue-200 shadow-sm uppercase group-hover:bg-blue-200 group-hover:text-blue-800 transition-colors">
+                      {currentUser.name ? currentUser.name.charAt(0) : "U"}
+                    </div>
+                  )}
+                  <div className="hidden sm:block text-left">
+                    <p className="text-xs font-bold text-slate-800 line-clamp-1 max-w-[120px] group-hover:text-blue-600 transition-colors">
+                      {currentUser.name}
+                    </p>
+                    <p className="text-[10px] text-slate-400 line-clamp-1 flex items-center gap-1">
+                      <span>Ubah Profil</span>
+                      <span className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity text-[9px]">✏️</span>
+                    </p>
+                  </div>
+                </button>
                 <button
                   onClick={handleLogout}
-                  className="p-1.5 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg text-slate-400 hover:text-rose-600 transition-colors ml-1"
+                  className="p-1.5 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg text-slate-400 hover:text-rose-600 transition-colors ml-1 cursor-pointer h-8 w-8 flex items-center justify-center"
                   title="Keluar dari Akun"
                 >
                   <LogOut className="h-4.5 w-4.5" />
@@ -1268,6 +1373,157 @@ export default function App() {
               <p className="font-semibold">💡 Kredensial Pengujian Admin:</p>
               <p className="mt-0.5">Username: <strong className="font-sans font-bold">akunadmin</strong> | Sandi: <strong className="font-sans font-bold">admin123</strong></p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Modal Overlay */}
+      {showProfileModal && currentUser && (
+        <div className="fixed inset-0 z-50 bg-[#142D54]/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 shadow-2xl rounded-3xl w-full max-w-lg overflow-hidden relative p-6 space-y-5 animate-fade-in text-left">
+            <button
+              onClick={() => setShowProfileModal(false)}
+              className="absolute top-4 right-4 p-1.5 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition cursor-pointer"
+            >
+              <X className="h-4.5 w-4.5" />
+            </button>
+
+            <div className="text-center space-y-1">
+              <div className="relative inline-block">
+                {profilePhotoURL ? (
+                  <img
+                    src={profilePhotoURL}
+                    alt={profileName || "Avatar"}
+                    referrerPolicy="no-referrer"
+                    className="h-20 w-20 rounded-full object-cover border-4 border-blue-50 shadow-md mx-auto"
+                    onError={() => {
+                      setProfileError("URL Foto tidak valid atau tidak dapat dimuat.");
+                    }}
+                  />
+                ) : (
+                  <div className="h-20 w-20 rounded-full bg-blue-100 text-blue-700 font-extrabold text-2xl flex items-center justify-center border-4 border-blue-50 shadow-md mx-auto uppercase">
+                    {profileName ? profileName.charAt(0) : "U"}
+                  </div>
+                )}
+                <span className="absolute bottom-0 right-0 h-6 w-6 rounded-full bg-blue-600 border-2 border-white flex items-center justify-center text-xs shadow-sm">
+                  ✨
+                </span>
+              </div>
+              <h3 className="text-lg font-extrabold text-slate-900">Pengaturan Profil Anda</h3>
+              <p className="text-xs text-slate-400">Ubah nama panggilan dan lengkapi foto profil Anda.</p>
+            </div>
+
+            {profileError && (
+              <div className="bg-rose-50 border border-rose-100 text-rose-700 text-xs p-3 rounded-xl text-center font-semibold">
+                ⚠️ {profileError}
+              </div>
+            )}
+
+            {profileSuccess && (
+              <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs p-3 rounded-xl text-center font-semibold animate-bounce">
+                ✅ {profileSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveProfile} className="space-y-4 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Nama Lengkap / Panggilan
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                    placeholder="Contoh: Budi Cahyono"
+                    className="block w-full px-3 py-2 border border-slate-200 rounded-lg text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition bg-white text-slate-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Alamat Email (Terkunci)
+                  </label>
+                  <input
+                    type="email"
+                    disabled
+                    value={currentUser.email}
+                    className="block w-full px-3 py-2 border border-slate-100 rounded-lg text-xs bg-slate-50 text-slate-400 cursor-not-allowed font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Preset Avatars Selection */}
+              <div className="space-y-2">
+                <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  Pilih Avatar Preset Yang Menarik
+                </label>
+                <div className="grid grid-cols-6 gap-2">
+                  {[
+                    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+                    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+                    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
+                    "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
+                    "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop&q=80",
+                    "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80"
+                  ].map((url, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => {
+                        setProfilePhotoURL(url);
+                        setProfileError(null);
+                      }}
+                      className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                        profilePhotoURL === url ? "border-blue-600 scale-105 shadow-md shadow-blue-500/10" : "border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      <img src={url} alt={`Preset ${index + 1}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      {profilePhotoURL === url && (
+                        <div className="absolute inset-0 bg-blue-600/20 flex items-center justify-center">
+                          <span className="text-white text-xs">✓</span>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom Photo URL Input */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Atau Gunakan URL Foto Kustom Anda
+                </label>
+                <input
+                  type="url"
+                  value={profilePhotoURL}
+                  onChange={(e) => {
+                    setProfilePhotoURL(e.target.value);
+                    setProfileError(null);
+                  }}
+                  placeholder="https://example.com/foto-anda.jpg"
+                  className="block w-full px-3 py-2 border border-slate-200 rounded-lg text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition bg-white text-slate-800 font-mono"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowProfileModal(false)}
+                  className="w-1/3 border border-slate-200 hover:bg-slate-50 text-slate-600 py-2 rounded-xl font-semibold text-xs cursor-pointer transition text-center"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingProfile}
+                  className="w-2/3 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl font-bold text-xs cursor-pointer transition shadow-md shadow-blue-600/10 disabled:opacity-50"
+                >
+                  {isSavingProfile ? "Menyimpan..." : "Simpan Profil"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -128,91 +128,144 @@ app.post("/api/paraphrase", async (req, res): Promise<any> => {
       Anda WAJIB mengembalikan respons dalam format JSON dengan skema terstruktur.
     `;
 
-    // Query Gemini
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: `Parafrase teks berikut dengan ketentuan di atas:\n\n"""\n${text}\n"""`,
-      config: {
-        systemInstruction: systemInstruction,
-        temperature: 0.8,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            paraphrasedText: {
-              type: Type.STRING,
-              description: "Teks yang berhasil diparafrase sesuai mode.",
-            },
-            aiProbability: {
-              type: Type.INTEGER,
-              description: "Persentase kemungkinan teks baru dideteksi sebagai tulisan AI (0-100).",
-            },
-            originalAiProbability: {
-              type: Type.INTEGER,
-              description: "Persentase kemungkinan teks asli ditulis oleh AI (0-100).",
-            },
-            readabilityScore: {
-              type: Type.INTEGER,
-              description: "Tingkat keterbacaan teks baru bagi pembaca manusia (0-100).",
-            },
-            humanizedScore: {
-              type: Type.INTEGER,
-              description: "Seberapa mirip teks baru dengan gaya penulisan manusia yang hangat (0-100).",
-            },
-            feedback: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.STRING,
-              },
-              description: "3 poin feedback berupa optimasi penulisan bahasa Indonesia.",
-            },
-            turnitinScore: {
-              type: Type.INTEGER,
-              description: "Estimasi probabilitas lolos (penulisan manusia) Turnitin (90-100 jika humanized).",
-            },
-            gptzeroScore: {
-              type: Type.INTEGER,
-              description: "Estimasi probabilitas lolos GPTZero.",
-            },
-            copyleaksScore: {
-              type: Type.INTEGER,
-              description: "Estimasi probabilitas lolos Copyleaks.",
-            },
-            zerogptScore: {
-              type: Type.INTEGER,
-              description: "Estimasi probabilitas lolos ZeroGPT.",
-            },
-            phraseReplacements: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  original: { type: Type.STRING },
-                  replacement: { type: Type.STRING },
-                  category: { type: Type.STRING },
-                  explanation: { type: Type.STRING },
+    // Query Gemini with automatic retry logic and model fallback (handling temporary 503 UNAVAILABLE / high demand spikes)
+    let response;
+    const maxRetriesPerModel = 3;
+    let modelToUse = "gemini-3.5-flash";
+    let currentAttempt = 1;
+    let retryDelay = 1000; // Mulai dengan delay 1 detik
+    let isFallbackModel = false;
+
+    while (true) {
+      try {
+        console.log(`[Gemini API] Mengirim permintaan menggunakan model: ${modelToUse} (Percobaan ${currentAttempt}/${maxRetriesPerModel})`);
+        response = await ai.models.generateContent({
+          model: modelToUse,
+          contents: `Parafrase teks berikut dengan ketentuan di atas:\n\n"""\n${text}\n"""`,
+          config: {
+            systemInstruction: systemInstruction,
+            temperature: 0.8,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                paraphrasedText: {
+                  type: Type.STRING,
+                  description: "Teks yang berhasil diparafrase sesuai mode.",
                 },
-                required: ["original", "replacement", "category", "explanation"],
+                aiProbability: {
+                  type: Type.INTEGER,
+                  description: "Persentase kemungkinan teks baru dideteksi sebagai tulisan AI (0-100).",
+                },
+                originalAiProbability: {
+                  type: Type.INTEGER,
+                  description: "Persentase kemungkinan teks asli ditulis oleh AI (0-100).",
+                },
+                readabilityScore: {
+                  type: Type.INTEGER,
+                  description: "Tingkat keterbacaan teks baru bagi pembaca manusia (0-100).",
+                },
+                humanizedScore: {
+                  type: Type.INTEGER,
+                  description: "Seberapa mirip teks baru dengan gaya penulisan manusia yang hangat (0-100).",
+                },
+                feedback: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.STRING,
+                  },
+                  description: "3 poin feedback berupa optimasi penulisan bahasa Indonesia.",
+                },
+                turnitinScore: {
+                  type: Type.INTEGER,
+                  description: "Estimasi probabilitas lolos (penulisan manusia) Turnitin (90-100 jika humanized).",
+                },
+                gptzeroScore: {
+                  type: Type.INTEGER,
+                  description: "Estimasi probabilitas lolos GPTZero.",
+                },
+                copyleaksScore: {
+                  type: Type.INTEGER,
+                  description: "Estimasi probabilitas lolos Copyleaks.",
+                },
+                zerogptScore: {
+                  type: Type.INTEGER,
+                  description: "Estimasi probabilitas lolos ZeroGPT.",
+                },
+                phraseReplacements: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      original: { type: Type.STRING },
+                      replacement: { type: Type.STRING },
+                      category: { type: Type.STRING },
+                      explanation: { type: Type.STRING },
+                    },
+                    required: ["original", "replacement", "category", "explanation"],
+                  },
+                  description: "Analisis komparatif frasa sebelum dan setelah optimasi.",
+                },
               },
-              description: "Analisis komparatif frasa sebelum dan setelah optimasi.",
+              required: [
+                "paraphrasedText",
+                "aiProbability",
+                "originalAiProbability",
+                "readabilityScore",
+                "humanizedScore",
+                "feedback",
+                "turnitinScore",
+                "gptzeroScore",
+                "copyleaksScore",
+                "zerogptScore",
+                "phraseReplacements"
+              ],
             },
           },
-          required: [
-            "paraphrasedText",
-            "aiProbability",
-            "originalAiProbability",
-            "readabilityScore",
-            "humanizedScore",
-            "feedback",
-            "turnitinScore",
-            "gptzeroScore",
-            "copyleaksScore",
-            "zerogptScore",
-            "phraseReplacements"
-          ],
-        },
-      },
-    });
+        });
+        // Jika sukses, keluar dari loop
+        console.log(`[Gemini API] Berhasil memproses dengan model: ${modelToUse}`);
+        break;
+      } catch (err: any) {
+        console.error(`[Gemini API] Percobaan ${currentAttempt} dengan model ${modelToUse} gagal:`, err);
+        const errMessage = String(err.message || "").toLowerCase();
+        const errStatus = err.status || (err.error && err.error.code) || 0;
+        
+        // Cek apakah error 503 (UNAVAILABLE) atau 429 (Too Many Requests / RESOURCE_EXHAUSTED) atau issue overload lainnya
+        const isRetryable =
+          errStatus === 503 ||
+          errStatus === 429 ||
+          errMessage.includes("503") ||
+          errMessage.includes("unavailable") ||
+          errMessage.includes("high demand") ||
+          errMessage.includes("resource_exhausted") ||
+          errMessage.includes("rate limit") ||
+          errMessage.includes("spikes in demand") ||
+          errMessage.includes("overloaded");
+
+        if (isRetryable) {
+          if (currentAttempt < maxRetriesPerModel) {
+            console.warn(`[Gemini API] Server sibuk atau kuota penuh. Mencoba kembali dalam ${retryDelay}ms... (Percobaan ${currentAttempt}/${maxRetriesPerModel})`);
+            await new Promise((resolve) => setTimeout(resolve, retryDelay));
+            retryDelay *= 2; // Eksponensial backoff
+            currentAttempt++;
+          } else if (!isFallbackModel) {
+            // Jika model utama (gemini-3.5-flash) sudah dicoba maxRetriesPerModel dan tetap gagal, beralih ke gemini-flash-latest
+            console.warn(`[Gemini API] Model utama ${modelToUse} mengalami kendala. Beralih ke model cadangan 'gemini-flash-latest'...`);
+            modelToUse = "gemini-flash-latest";
+            isFallbackModel = true;
+            currentAttempt = 1;
+            retryDelay = 1000;
+          } else {
+            // Jika model cadangan juga gagal setelah percobaan maksimal, lempar error asli
+            throw err;
+          }
+        } else {
+          // Jika error permanen (misal error validasi/skema), langsung throw
+          throw err;
+        }
+      }
+    }
 
     const resultText = response.text || "{}";
     const resultJson = JSON.parse(resultText);

@@ -7,6 +7,7 @@ export interface User {
   password?: string;
   role?: "user" | "admin";
   createdAt?: string;
+  photoURL?: string;
 }
 
 export interface ParaphraseHistoryItem {
